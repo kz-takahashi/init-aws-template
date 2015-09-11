@@ -39,11 +39,11 @@
     },
     "ZipFileS3Bucket" : {
       "Type" : "String",
-      "Description" : "S3 bucket name where Lambda function code zip file is stored.",
+      "Description" : "S3 bucket name where Lambda function code zip file is stored."
     },
     "ZipFileS3Key" : {
       "Type" : "String",
-      "Description" : "S3 key where Lambda function code zip file is stored. e.g. misc/initAWS.zip",
+      "Description" : "S3 key where Lambda function code zip file is stored. e.g. misc/initAWS.zip"
     }
   },
 
