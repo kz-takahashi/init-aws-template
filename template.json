@@ -1,0 +1,204 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "Enable audit and security services for initial aws account. This template raises some costs. e.g. store log data to s3, enable CloudWatch alarms, etc.",
+
+  "Parameters" : {
+    "EnableAccountPasswordPolicy": {
+      "Type" : "String",
+      "Description" : "Update account password policy. Password policy details are determined according to PasswordPolicyLevel parameter.",
+      "AllowedValues" : ["true", "false"],
+      "Default" : "true"
+    },
+    "EnableCloudTrail" : {
+      "Type" : "String",
+      "Description" : "Enable CloudTrail on all regions. Global service logging is enabled on us-east-1 region.",
+      "AllowedValues" : ["true", "false"],
+      "Default" : "true"
+    },
+    "EnableRootLoginAlarm": {
+      "Type" : "String",
+      "Description" : "Create CloudWatch alarm to notify owner of login event using root account. This option depends on CloudTrail and requires NotificationEmailAddress parameter.",
+      "AllowedValues" : ["true", "false"],
+      "Default" : "true"
+    },
+    "NotificationEmailAddress" : {
+      "Type" : "String",
+      "Description" : "Email address to notify CloudWatch alarms."
+    },
+    "PasswordPolicyLevel" : {
+      "Type" : "String",
+      "Description" : "Account password policy level. 'Initial' means default AWS settings. 'Normal' force users to use complex password. 'ExpireXDays' means their password expires after X days.",
+      "AllowedValues" : ["Initial", "Normal", "Expire90Days", "Expire365Days"],
+      "Default" : "Normal"
+    },
+    "CloudTrailBucketName" : {
+      "Type" : "String",
+      "Description" : "S3 bucket name to store CloudTrail logs. If specified bucket does not exist, new bucket is created at ap-northeast-1 region.",
+      "MinLength" : 3,
+      "MaxLength" : 63
+    },
+    "ZipFileS3Bucket" : {
+      "Type" : "String",
+      "Description" : "S3 bucket name where Lambda function code zip file is stored.",
+    },
+    "ZipFileS3Key" : {
+      "Type" : "String",
+      "Description" : "S3 key where Lambda function code zip file is stored. e.g. misc/initAWS.zip",
+    }
+  },
+
+  "Mappings" : {
+    "PasswordPolicyLevels" : {
+      "Initial" : {
+        "MinimumPasswordLength": 6,
+        "RequireSymbols": false,
+        "RequireNumbers": false,
+        "RequireUppercaseCharacters": false,
+        "RequireLowercaseCharacters": false,
+        "AllowUsersToChangePassword": true,
+        "MaxPasswordAge": 0,
+        "PasswordReusePrevention": 0,
+        "HardExpiry": false
+      },
+      "Normal" : {
+        "MinimumPasswordLength": 8,
+        "RequireSymbols": true,
+        "RequireNumbers": true,
+        "RequireUppercaseCharacters": false,
+        "RequireLowercaseCharacters": true,
+        "AllowUsersToChangePassword": true,
+        "MaxPasswordAge": 0,
+        "PasswordReusePrevention": 0,
+        "HardExpiry": true
+      },
+      "Expire90Days" : {
+        "MinimumPasswordLength": 8,
+        "RequireSymbols": true,
+        "RequireNumbers": true,
+        "RequireUppercaseCharacters": false,
+        "RequireLowercaseCharacters": true,
+        "AllowUsersToChangePassword": true,
+        "MaxPasswordAge": 90,
+        "PasswordReusePrevention": 4,
+        "HardExpiry": true
+      },
+      "Expire365Days" : {
+        "MinimumPasswordLength": 8,
+        "RequireSymbols": true,
+        "RequireNumbers": true,
+        "RequireUppercaseCharacters": false,
+        "RequireLowercaseCharacters": true,
+        "AllowUsersToChangePassword": true,
+        "MaxPasswordAge": 365,
+        "PasswordReusePrevention": 4,
+        "HardExpiry": true
+      }
+    }
+  },
+
+  "Resources" : {
+    "LambdaExecutionRole" : {
+      "Type" : "AWS::IAM::Role",
+      "Properties" : {
+        "AssumeRolePolicyDocument" : {
+          "Version" : "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {
+              "Service": [ "lambda.amazonaws.com" ]
+            },
+            "Action": [ "sts:AssumeRole" ]
+          }]
+        },
+        "Path": "/",
+        "Policies": [{
+          "PolicyName": "LambdaExecutionRole",
+          "PolicyDocument": {
+            "Version" : "2012-10-17",
+            "Statement" : [{
+              "Effect" : "Allow",
+              "Action" : [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:DescribeLogGroups",
+                "logs:DescribeMetricFilters",
+                "logs:PutMetricFilter",
+                "cloudwatch:DescribeAlarms",
+                "cloudwatch:PutMetricAlarm",
+                "cloudtrail:GetTrailStatus",
+                "cloudtrail:CreateTrail",
+                "cloudtrail:StartLogging",
+                "s3:CreateBucket",
+                "s3:GetBucketPolicy",
+                "s3:PutBucketPolicy",
+                "iam:UpdateAccountPasswordPolicy",
+                "iam:GetRole",
+                "iam:CreateRole",
+                "iam:PutRolePolicy",
+                "iam:CreateInstanceProfile",
+                "iam:AddRoleToInstanceProfile",
+                "iam:PassRole",
+                "sns:ListTopics",
+                "sns:CreateTopic",
+                "sns:Subscribe"
+              ],
+              "Resource": "*"
+            }]
+          }
+        }]
+      }
+    },
+
+    "LambdaFunction" : {
+      "Type" : "AWS::Lambda::Function",
+      "Properties" : {
+        "Description" : "test",
+        "Handler" : "index.handler",
+        "Role" : { "Fn::GetAtt" : ["LambdaExecutionRole", "Arn"] },
+        "Code" : {
+          "S3Bucket": { "Ref" : "ZipFileS3Bucket" },
+          "S3Key": { "Ref" : "ZipFileS3Key" }
+        },
+        "Runtime" : "nodejs",
+        "Timeout" : "60"
+      }
+    },
+
+    "ExecuteLambdaFunction" : {
+      "Type" : "Custom::InitAWS",
+      "Properties" : {
+        "ServiceToken": { "Fn::GetAtt" : ["LambdaFunction", "Arn"] },
+        "EnableAccountPasswordPolicy" : { "Ref": "EnableAccountPasswordPolicy" },
+        "EnableCloudTrail": { "Ref": "EnableCloudTrail" },
+        "EnableRootLoginAlarm": { "Ref": "EnableRootLoginAlarm" },
+        "CloudTrailBucketName":  { "Ref": "CloudTrailBucketName" },
+        "NotificationEmailAddress": { "Ref": "NotificationEmailAddress" },
+        "PasswordPolicyJson": { "Fn::Join" : ["", [
+          "{",
+          "  \"MinimumPasswordLength\": ", { "Fn::FindInMap" : ["PasswordPolicyLevels", { "Ref" : "PasswordPolicyLevel" }, "MinimumPasswordLength"] }, ",",
+          "  \"RequireSymbols\": ", { "Fn::FindInMap" : ["PasswordPolicyLevels", { "Ref" : "PasswordPolicyLevel" }, "RequireSymbols"] }, ",",
+          "  \"RequireNumbers\": ", { "Fn::FindInMap" : ["PasswordPolicyLevels", { "Ref" : "PasswordPolicyLevel" }, "RequireNumbers"] }, ",",
+          "  \"RequireUppercaseCharacters\": ", { "Fn::FindInMap" : ["PasswordPolicyLevels", { "Ref" : "PasswordPolicyLevel" }, "RequireUppercaseCharacters"] }, ",",
+          "  \"RequireLowercaseCharacters\": ", { "Fn::FindInMap" : ["PasswordPolicyLevels", { "Ref" : "PasswordPolicyLevel" }, "RequireLowercaseCharacters"] }, ",",
+          "  \"AllowUsersToChangePassword\": ", { "Fn::FindInMap" : ["PasswordPolicyLevels", { "Ref" : "PasswordPolicyLevel" }, "AllowUsersToChangePassword"] }, ",",
+          "  \"MaxPasswordAge\": ", { "Fn::FindInMap" : ["PasswordPolicyLevels", { "Ref" : "PasswordPolicyLevel" }, "MaxPasswordAge"] }, ",",
+          "  \"PasswordReusePrevention\": ", { "Fn::FindInMap" : ["PasswordPolicyLevels", { "Ref" : "PasswordPolicyLevel" }, "PasswordReusePrevention"] }, ",",
+          "  \"HardExpiry\": ", { "Fn::FindInMap" : ["PasswordPolicyLevels", { "Ref" : "PasswordPolicyLevel" }, "HardExpiry"] },
+          "}"
+        ]]}
+      }
+    }
+  },
+
+  "Outputs" : {
+    "LambdaFunctionLog" : {
+      "Description" : "CloudWatch Logs URL to access Lambda Function log.",
+      "Value" : { "Fn::Join" : ["", [
+        "https://", { "Ref" : "AWS::Region" },
+        ".console.aws.amazon.com/cloudwatch/home?region=", { "Ref" : "AWS::Region" },
+        "#logStream:group=/aws/lambda/", { "Ref" : "LambdaFunction" }
+      ]]}
+    }
+  }
+}

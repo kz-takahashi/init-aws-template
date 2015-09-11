@@ -1,0 +1,16 @@
+{
+  "name": "initAWS",
+  "version": "0.0.1",
+  "description": "Enable audit and security services for initial aws account.",
+  "main": "index.js",
+  "dependencies": {
+    "async": "~1.4.2"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Kazuya Takahashi",
+  "license": "Apache License Version 2.0",
+  "repository": "github:kz-takahashi/init-aws-template"
+}
